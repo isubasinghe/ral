@@ -5,21 +5,27 @@ use std::cell::RefCell;
 pub type Span = std::ops::Range<usize>;
 
 pub struct Config {
-    entries: HashMap<Arc<String>, RefCell<Arc<String>>>
+    entries: HashMap<Spanned<Arc<String>>, Spanned<RefCell<Arc<String>>>>
 }
 
 pub struct Register {
-    name: Arc<String>, 
-    mappings: Vec<(Arc<String>, u32)>
+    name: Spanned<Arc<String>>, 
+    mappings: Vec<(Spanned<Arc<String>>, Spanned<u32>)>
 }
 
 pub enum RalEntry {
-    RawRegister(Register), 
-    Alias(Arc<String>), 
-    RestrictedAlias(Arc<String>, Arc<String>)
+    RawRegister(Spanned<Register>), 
+    Alias(Spanned<Arc<String>>), 
+    RestrictedAlias(Spanned<Arc<String>>, Spanned<Arc<String>>)
 }
 
 pub struct Ral {
-    config: Config, 
+    config: Spanned<Config>,
     registers: HashMap<Arc<String>, RalEntry>
+}
+
+pub struct Spanned<T> {
+    pub source: Arc<String>, 
+    pub x: T, 
+    pub span: Span
 }

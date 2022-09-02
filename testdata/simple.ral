@@ -1,4 +1,3 @@
-
 config {
   xlen: 64 
 }
