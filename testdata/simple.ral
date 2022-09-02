@@ -1,0 +1,32 @@
+
+config {
+  xlen: 64 
+}
+
+register mstatus {
+  sd: 1   
+  _: @xlen-37
+  sxl: 2
+  uxl: 2
+  _: 1 
+  tsr: 1 
+  tw: 1 
+  tvm: 1 
+  mxr: 1
+  sum: 1 
+  mprv: 1
+  xs: 2 
+  fs: 2
+  mpp: 2
+  _: 2
+  spp: 1
+  mpie: 1 
+  _: 1 
+  spie: 1
+  upie: 1
+  mie: 1 
+  _: 1
+  sie: 1
+  uie: 1
+}
+
