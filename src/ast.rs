@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::cell::RefCell;
 
+pub type Span = std::ops::Range<usize>;
+
 pub struct Config {
     entries: HashMap<Arc<String>, RefCell<Arc<String>>>
 }
