@@ -24,7 +24,7 @@ impl From<io::Error> for ParseError {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum Token {
     Register,
     Alias,
@@ -36,9 +36,9 @@ enum Token {
     RBrace,
     LBrace,
     Config,
-    Variable(Arc<String>), 
-    Subtract, 
-    Add
+    Var(Arc<String>),
+    Subtract,
+    Add,
 }
 
 impl fmt::Display for Token {
@@ -53,10 +53,10 @@ impl fmt::Display for Token {
             Token::Ident(s) => write!(f, "{}", s),
             Token::RBrace => write!(f, "{{"),
             Token::LBrace => write!(f, "}}"),
-            Token::Config => write!(f, "config"), 
-            Token::Variable(s) => write!(f, "{}", s), 
-            Token::Subtract => write!(f, "-"), 
-            Token::Add => write!(f, "+")
+            Token::Config => write!(f, "config"),
+            Token::Var(s) => write!(f, "{}", s),
+            Token::Subtract => write!(f, "-"),
+            Token::Add => write!(f, "+"),
         }
     }
 }
@@ -64,6 +64,8 @@ impl fmt::Display for Token {
 fn lexer() -> impl Parser<char, Vec<(Token, Span)>, Error = Simple<char>> {
     let lbrace = just('{').map(|_| Token::LBrace);
     let rbrace = just('}').map(|_| Token::RBrace);
+    let add = just('+').map(|_| Token::Add);
+    let sub = just('-').map(|_| Token::Subtract);
     let alias = just("alias").map(|_| Token::Alias);
     let empty = just('_').map(|_| Token::Empty);
     let colon = just(':').map(|_| Token::Colon);
@@ -71,17 +73,21 @@ fn lexer() -> impl Parser<char, Vec<(Token, Span)>, Error = Simple<char>> {
     let restricted = just("restricted").map(|_| Token::Restriced);
     let config = just("config").map(|_| Token::Config);
     let num = text::int(10).map(|s| Token::Num(Arc::new(s)));
+    let var = just('@').ignore_then(text::ident().map(|s| Token::Var(Arc::new(s))));
     let ident = text::ident().map(|s| Token::Ident(Arc::new(s)));
 
     let token = lbrace
         .or(rbrace)
         .or(alias)
+        .or(add)
+        .or(sub)
         .or(empty)
         .or(register)
         .or(colon)
         .or(restricted)
         .or(config)
         .or(num)
+        .or(var)
         .or(ident);
 
     token
@@ -90,17 +96,46 @@ fn lexer() -> impl Parser<char, Vec<(Token, Span)>, Error = Simple<char>> {
         .repeated()
 }
 
-pub type KV = (Option<Arc<String>>, Arc<String>);
+fn parser_expr(
+    orig_source: Arc<String>,
+) -> impl Parser<Token, Spanned<Expr>, Error = Simple<Token>> + Clone {
+    recursive(move |expr| {
+        let ident = select! { Token::Var(s) => s.clone() }.labelled("variable");
 
-fn parser_ident_int(source: Arc<String>) -> impl Parser<Token, Spanned<KV>, Error=Simple<Token>> + Clone {
-    let ident = select! { Token::Ident(s) => s.clone() }.labelled("identifier");
-    let empty = just(Token::Empty);
+        let num = select! { Token::Num(s) => s.clone() }.labelled("number");
+        let source = orig_source.clone();
 
-    let value = recursive(move |expr| {
-       let num = select! { Token::Num(v) => v.clone() }.labelled("number"); 
-       let source = source.clone();
-       num.map_with_span(move |v, span: Span| Spanned { source: source.clone(), x: num, span });
-       
-    });
-    todo!()
+        let num = num.map_with_span(move |v, span| Spanned {
+            x: Arc::new(ExprX::Num(v.parse::<u32>().unwrap())),
+            source: source.clone(),
+            span,
+        });
+
+        let source = orig_source.clone();
+        let ident = ident.map_with_span(move |v, span| Spanned {
+            source: source.clone(),
+            x: Arc::new(ExprX::Var(v)),
+            span,
+        });
+
+        let arith_op = just(Token::Add).or(just(Token::Subtract));
+        let arith_op = expr.clone().then(arith_op).then(expr.clone());
+
+        let source = orig_source.clone();
+        let arith_op = arith_op.map_with_span(move |((e1, t), e2), span| {
+            let op = match t {
+                Token::Add => BinaryOp::Add,
+                Token::Subtract => BinaryOp::Subtract,
+                _ => unreachable!(),
+            };
+            let x = Arc::new(ExprX::Binary(op, e1, e2));
+            Spanned {
+                source: source.clone(),
+                x,
+                span,
+            }
+        });
+
+        ident.or(arith_op).or(num)
+    })
 }
