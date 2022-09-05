@@ -1,7 +1,5 @@
 use clap::{Parser, ValueEnum};
-use std::error::Error;
 use std::path::PathBuf;
-use std::str::FromStr;
 
 #[derive(Debug, ValueEnum, Clone)]
 pub enum Output {
