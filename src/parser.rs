@@ -96,7 +96,7 @@ fn lexer() -> impl Parser<char, Vec<(Token, Span)>, Error = Simple<char>> {
         .repeated()
 }
 
-fn parser_expr(
+fn parse_expr(
     orig_source: Arc<String>,
 ) -> impl Parser<Token, Spanned<Expr>, Error = Simple<Token>> + Clone {
     recursive(move |expr| {
@@ -139,3 +139,4 @@ fn parser_expr(
         ident.or(arith_op).or(num)
     })
 }
+
