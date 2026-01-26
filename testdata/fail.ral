@@ -27,4 +27,3 @@ register mstatus: @xlen {
   _: 1,
   sie: 1,
   uie: 1
-}

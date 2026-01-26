@@ -1,20 +1,70 @@
-use clap::{Parser, ValueEnum};
-use std::path::PathBuf;
+use clap::Parser;
+use ral::cli::{Cli, Output};
+use ral::codegen;
+use std::collections::HashMap;
+use std::fs;
+use std::process;
 
-#[derive(Debug, ValueEnum, Clone)]
-pub enum Output {
-    C,
-    Rust,
-}
-
-#[derive(Debug, Parser)]
-#[clap(author, version, about, long_about=None)]
-struct Cli {
-    file: PathBuf,
-    #[clap(value_enum)]
-    output: Output,
-}
 fn main() {
     let cli = Cli::parse();
-    println!("Hello World");
+    
+    // Parse defines
+    let mut defines = HashMap::new();
+    for define in cli.defines {
+        if let Some((key, value)) = define.split_once('=') {
+            if let Ok(num) = value.parse::<u64>() {
+                defines.insert(key.to_string(), num);
+            } else {
+                eprintln!("Error: Invalid number in define '{}'", define);
+                process::exit(1);
+            }
+        } else {
+            eprintln!("Error: Invalid define format '{}', expected KEY=VALUE", define);
+            process::exit(1);
+        }
+    }
+    
+    // Read the input file
+    let content = match fs::read_to_string(&cli.file) {
+        Ok(content) => content,
+        Err(err) => {
+            eprintln!("Error reading file '{}': {}", cli.file.display(), err);
+            process::exit(1);
+        }
+    };
+    
+    // Parse the content
+    match ral::parser::parse(&content) {
+        Ok(ast) => {
+            match cli.output {
+                Output::C => {
+                    let code = codegen::c::convert_to_c(ast, &defines);
+                    println!("{}", code);
+                }
+                Output::Rust => {
+                    // This will currently panic as it is not implemented
+                    let code = codegen::rust::convert_to_rust(ast, &defines);
+                    println!("{}", code);
+                }
+            }
+        }
+        Err(parse_err) => {
+            eprintln!("Parse error occurred:");
+            
+            // Use ariadne for pretty error reporting if we have span information
+            let filename = cli.file.to_string_lossy();
+            if let Some(report) = parse_err.report(&filename) {
+                report.eprint((filename.as_ref(), ariadne::Source::from(&content)))
+                    .unwrap_or_else(|err| {
+                        eprintln!("Failed to print error report: {}", err);
+                        eprintln!("Original parse error: {}", parse_err);
+                    });
+            } else {
+                // Fallback to simple error message if no span info
+                eprintln!("{}", parse_err);
+            }
+            
+            process::exit(1);
+        }
+    }
 }
