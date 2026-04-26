@@ -1,0 +1,3 @@
+configg { xlen, }
+
+register foo: @xlen { a: 32 }

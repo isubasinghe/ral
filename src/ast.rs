@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 pub type Span = std::ops::Range<usize>;
@@ -48,7 +48,7 @@ pub enum RalEntry {
 #[derive(Debug, Clone)]
 pub struct Ral {
     pub config: Spanned<Config>,
-    pub registers: HashMap<Arc<String>, RalEntry>
+    pub registers: BTreeMap<Arc<String>, RalEntry>
 }
 
 #[derive(Debug, Clone)]

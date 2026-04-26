@@ -1,0 +1,8 @@
+config {
+  xlen,
+}
+
+register mcause: @xlen {
+  interrupt: 1,
+  exception_code: @xlen - 1
+}

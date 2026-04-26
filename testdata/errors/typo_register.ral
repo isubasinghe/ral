@@ -1,0 +1,3 @@
+config { }
+
+regsiter foo: 32 { a: 32 }

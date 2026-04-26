@@ -1,0 +1,11 @@
+config {
+  xlen,
+  mode_bits,
+  asid_bits,
+}
+
+register satp: @xlen {
+  mode: @mode_bits,
+  asid: @asid_bits,
+  ppn: @xlen - @mode_bits - @asid_bits
+}

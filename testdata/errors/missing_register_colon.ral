@@ -1,0 +1,3 @@
+config { }
+
+register foo 32 { a: 32 }

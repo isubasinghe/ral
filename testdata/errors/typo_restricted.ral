@@ -1,0 +1,5 @@
+config { }
+
+register foo: 32 { a: 32 }
+
+resticted foo bar

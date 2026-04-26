@@ -29,7 +29,7 @@ fn main() {
         }
         Err(err) => {
             println!("Parse error: {}", err);
-            if let Some(report) = err.report() {
+            if let Some(report) = err.report("testdata/simple.ral") {
                 // For now just print the error, in a real application you'd use ariadne to print it nicely
                 println!("Error details: {:?}", report);
             }

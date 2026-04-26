@@ -49,21 +49,14 @@ fn main() {
             }
         }
         Err(parse_err) => {
-            eprintln!("Parse error occurred:");
-            
-            // Use ariadne for pretty error reporting if we have span information
             let filename = cli.file.to_string_lossy();
-            if let Some(report) = parse_err.report(&filename) {
-                report.eprint((filename.as_ref(), ariadne::Source::from(&content)))
+            for report in parse_err.reports(&filename) {
+                report
+                    .eprint((filename.as_ref(), ariadne::Source::from(&content)))
                     .unwrap_or_else(|err| {
-                        eprintln!("Failed to print error report: {}", err);
-                        eprintln!("Original parse error: {}", parse_err);
+                        eprintln!("failed to render error: {}", err);
                     });
-            } else {
-                // Fallback to simple error message if no span info
-                eprintln!("{}", parse_err);
             }
-            
             process::exit(1);
         }
     }

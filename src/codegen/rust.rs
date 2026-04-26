@@ -1,8 +1,7 @@
 use crate::ast::{BinaryOp, Expr, ExprX, Ral, RalEntry};
-use codegen::Scope;
 use std::collections::HashMap;
+use std::fmt::Write;
 
-// Evaluate constant expression. Returns None if it depends on unknown variables.
 fn eval_const(expr: &Expr, defines: &HashMap<String, u64>) -> Option<u64> {
     match &**expr {
         ExprX::Num(n) => Some(*n as u64),
@@ -18,110 +17,193 @@ fn eval_const(expr: &Expr, defines: &HashMap<String, u64>) -> Option<u64> {
     }
 }
 
-fn convert_expr_to_string(expr: &Expr, defines: &HashMap<String, u64>) -> String {
-    if let Some(val) = eval_const(expr, defines) {
-        return format!("{}", val);
+fn render_expr(expr: &Expr, defines: &HashMap<String, u64>) -> String {
+    if let Some(v) = eval_const(expr, defines) {
+        return v.to_string();
     }
-    
     match &**expr {
         ExprX::Num(n) => n.to_string(),
-        ExprX::Var(v) => {
-            if let Some(val) = defines.get(v.as_str()) {
-                val.to_string()
-            } else {
-                v.to_string()
-            }
-        },
+        ExprX::Var(v) => v.to_string(),
         ExprX::Binary(op, l, r) => {
-            let l_str = convert_expr_to_string(&l.x, defines);
-            let r_str = convert_expr_to_string(&r.x, defines);
             let op_str = match op {
                 BinaryOp::Add => "+",
                 BinaryOp::Subtract => "-",
             };
-            format!("({}) {} ({})", l_str, op_str, r_str)
+            format!(
+                "({} {} {})",
+                render_expr(&l.x, defines),
+                op_str,
+                render_expr(&r.x, defines)
+            )
         }
     }
 }
 
-pub fn convert_to_rust(ral: Ral, defines: &HashMap<String, u64>) -> String {
-    let mut scope = Scope::new();
+fn round_up_width(bits: u64) -> u32 {
+    match bits {
+        0..=8 => 8,
+        9..=16 => 16,
+        17..=32 => 32,
+        _ => 64,
+    }
+}
 
-    for (reg_name, entry) in &ral.registers {
-        if let RalEntry::RawRegister(reg_spanned) = entry {
-            let reg = &reg_spanned.x;
-            
-            // We'll generate a module for the register if we wanted to group them, 
-            // but following the C pattern, we'll generate flat functions with prefixes.
-            // Or maybe better: generated struct impls?
-            // The prompt asked for "setter and getter for the fields".
-            // Let's stick to simple functions for now to match C output style requested earlier,
-            // but mostly just valid Rust.
-            
-            let mut offset_const: u64 = 0;
-            let mut offset_dynamic: Vec<String> = Vec::new();
-            
-            // Iterate fields in reverse (LSB first)
-            for field in reg.fields.iter().rev() {
-                // Calculate current offset string
-                let offset_str = if offset_dynamic.is_empty() {
-                    offset_const.to_string()
-                } else {
-                    let mut parts = offset_dynamic.clone();
-                    if offset_const > 0 {
-                        parts.push(offset_const.to_string());
-                    }
-                    parts.join(" + ")
-                };
+fn rust_int_type(width: u32) -> &'static str {
+    match width {
+        8 => "u8",
+        16 => "u16",
+        32 => "u32",
+        _ => "u64",
+    }
+}
 
-                let mask_val_opt = eval_const(&field.size.x, defines).map(|size| {
-                    if size < 64 {
-                        (1u64 << size) - 1
-                    } else {
-                        u64::MAX // Should probably handle full width properly
-                    }
-                });
-                
-                let mask_str = if let Some(mask) = mask_val_opt {
-                    format!("0x{:x}", mask)
-                } else {
-                    let size_str = convert_expr_to_string(&field.size.x, defines);
-                    format!("(1 << ({})) - 1", size_str)
-                };
-
-                if let Some(field_name_spanned) = &field.name {
-                    let field_name = &field_name_spanned.x;
-                    
-                    // Getter
-                    let get_name = format!("{}_{}_get", reg_name, field_name);
-                    let get_fn = scope.new_fn(&get_name)
-                        .vis("pub")
-                        .arg("val", "u64")
-                        .ret("u64");
-                    
-                    get_fn.line(format!("(val >> {}) & {}", offset_str, mask_str));
-
-                    // Setter
-                    let set_name = format!("{}_{}_set", reg_name, field_name);
-                    let set_fn = scope.new_fn(&set_name)
-                        .vis("pub")
-                        .arg("val", "u64")
-                        .arg("field_val", "u64")
-                        .ret("u64");
-                    
-                    set_fn.line(format!("(val & !({} << {})) | ((field_val & {}) << {})", 
-                        mask_str, offset_str, mask_str, offset_str));
-                }
-
-                // Update offset state
-                if let Some(n) = eval_const(&field.size.x, defines) {
-                    offset_const += n;
-                } else {
-                    offset_dynamic.push(convert_expr_to_string(&field.size.x, defines));
-                }
+fn snake_to_pascal(s: &str) -> String {
+    let mut out = String::new();
+    let mut capitalize_next = true;
+    for c in s.chars() {
+        if c == '_' {
+            capitalize_next = true;
+            continue;
+        }
+        if capitalize_next {
+            for u in c.to_uppercase() {
+                out.push(u);
             }
+            capitalize_next = false;
+        } else {
+            out.push(c);
         }
     }
+    out
+}
 
-    scope.to_string()
+fn build_offset(offset_const: u64, offset_dynamic: &[String]) -> String {
+    if offset_dynamic.is_empty() {
+        return offset_const.to_string();
+    }
+    let mut parts: Vec<String> = offset_dynamic.to_vec();
+    if offset_const > 0 {
+        parts.push(offset_const.to_string());
+    }
+    parts.join(" + ")
+}
+
+fn mask_literal(size_expr: &Expr, defines: &HashMap<String, u64>) -> String {
+    if let Some(size) = eval_const(size_expr, defines) {
+        let mask_val = if size >= 64 {
+            u64::MAX
+        } else {
+            (1u64 << size) - 1
+        };
+        format!("0x{:x}", mask_val)
+    } else {
+        let size_str = render_expr(size_expr, defines);
+        format!("((1 << ({})) - 1)", size_str)
+    }
+}
+
+pub fn convert_to_rust(ral: Ral, defines: &HashMap<String, u64>) -> String {
+    let mut out = String::new();
+    out.push_str("// Generated by ral. Do not edit.\n");
+    out.push_str("#![allow(dead_code)]\n");
+
+    for (reg_name, entry) in &ral.registers {
+        let RalEntry::RawRegister(reg_spanned) = entry else {
+            continue;
+        };
+        let reg = &reg_spanned.x;
+        let struct_name = snake_to_pascal(reg_name);
+
+        let reg_bits = eval_const(&reg.size.x, defines).unwrap_or(64);
+        let width = round_up_width(reg_bits);
+        let int_type = rust_int_type(width);
+
+        out.push('\n');
+        let _ = writeln!(out, "#[repr(transparent)]");
+        let _ = writeln!(
+            out,
+            "#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]"
+        );
+        let _ = writeln!(out, "pub struct {}(pub {});", struct_name, int_type);
+        out.push('\n');
+        let _ = writeln!(out, "impl {} {{", struct_name);
+        let _ = writeln!(out, "    #[inline]");
+        let _ = writeln!(
+            out,
+            "    pub const fn new(val: {}) -> Self {{ Self(val) }}",
+            int_type
+        );
+        out.push('\n');
+        let _ = writeln!(out, "    #[inline]");
+        let _ = writeln!(
+            out,
+            "    pub const fn raw(self) -> {} {{ self.0 }}",
+            int_type
+        );
+
+        let mut offset_const: u64 = 0;
+        let mut offset_dynamic: Vec<String> = Vec::new();
+
+        for field in reg.fields.iter().rev() {
+            let offset_str = build_offset(offset_const, &offset_dynamic);
+            let mask_str = mask_literal(&field.size.x, defines);
+
+            if let Some(field_name_spanned) = &field.name {
+                let field_name = &field_name_spanned.x;
+
+                // Getter: `fn <name>(self) -> T`
+                out.push('\n');
+                let _ = writeln!(out, "    #[inline]");
+                let _ = writeln!(
+                    out,
+                    "    pub const fn {}(self) -> {} {{",
+                    field_name, int_type
+                );
+                if offset_str == "0" {
+                    let _ = writeln!(out, "        self.0 & {}", mask_str);
+                } else {
+                    let _ = writeln!(
+                        out,
+                        "        (self.0 >> {}) & {}",
+                        offset_str, mask_str
+                    );
+                }
+                let _ = writeln!(out, "    }}");
+
+                // Setter: `fn with_<name>(self, field_val: T) -> Self`
+                out.push('\n');
+                let _ = writeln!(out, "    #[inline]");
+                let _ = writeln!(
+                    out,
+                    "    pub const fn with_{}(self, field_val: {}) -> Self {{",
+                    field_name, int_type
+                );
+                if offset_str == "0" {
+                    let _ = writeln!(
+                        out,
+                        "        Self((self.0 & !{m}) | (field_val & {m}))",
+                        m = mask_str
+                    );
+                } else {
+                    let _ = writeln!(
+                        out,
+                        "        Self((self.0 & !({m} << {o})) | ((field_val & {m}) << {o}))",
+                        m = mask_str,
+                        o = offset_str,
+                    );
+                }
+                let _ = writeln!(out, "    }}");
+            }
+
+            if let Some(n) = eval_const(&field.size.x, defines) {
+                offset_const += n;
+            } else {
+                offset_dynamic.push(render_expr(&field.size.x, defines));
+            }
+        }
+
+        let _ = writeln!(out, "}}");
+    }
+
+    out
 }

@@ -1,0 +1,19 @@
+config {
+  xlen,
+}
+
+register mip: @xlen {
+  _: @xlen - 12,
+  meip: 1,
+  _: 1,
+  seip: 1,
+  ueip: 1,
+  mtip: 1,
+  _: 1,
+  stip: 1,
+  utip: 1,
+  msip: 1,
+  _: 1,
+  ssip: 1,
+  usip: 1
+}

@@ -1,0 +1,19 @@
+config {
+  xlen,
+}
+
+register mie: @xlen {
+  _: @xlen - 12,
+  meie: 1,
+  _: 1,
+  seie: 1,
+  ueie: 1,
+  mtie: 1,
+  _: 1,
+  stie: 1,
+  utie: 1,
+  msie: 1,
+  _: 1,
+  ssie: 1,
+  usie: 1
+}

@@ -1,0 +1,6 @@
+config { }
+
+register foo: 32 {
+  a: ,
+  b: 16
+}

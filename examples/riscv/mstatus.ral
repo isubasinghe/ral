@@ -1,0 +1,30 @@
+config { }
+
+register mstatus: 64 {
+  sd: 1,
+  _: 25,
+  mbe: 1,
+  sbe: 1,
+  sxl: 2,
+  uxl: 2,
+  _: 9,
+  tsr: 1,
+  tw: 1,
+  tvm: 1,
+  mxr: 1,
+  sum: 1,
+  mprv: 1,
+  xs: 2,
+  fs: 2,
+  mpp: 2,
+  vs: 2,
+  spp: 1,
+  mpie: 1,
+  ube: 1,
+  spie: 1,
+  upie: 1,
+  mie: 1,
+  _: 1,
+  sie: 1,
+  uie: 1
+}
